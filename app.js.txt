@@ -1,0 +1,170 @@
+const socket = io();
+
+let currentUser = null;
+let activeChatId = null;
+
+const authScreen = document.getElementById('auth-screen');
+const appScreen = document.getElementById('app-screen');
+const authError = document.getElementById('auth-error');
+const chatsContainer = document.getElementById('chats-container');
+const messagesContainer = document.getElementById('messages-container');
+const chatStub = document.getElementById('chat-stub');
+const chatActive = document.getElementById('chat-active');
+const modalSettings = document.getElementById('modal-settings');
+
+document.getElementById('btn-login').addEventListener('click', async () => {
+    const username = document.getElementById('auth-username').value;
+    const password = document.getElementById('auth-password').value;
+    const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (data.error) { authError.innerText = data.error; authError.style.display = 'block'; } 
+    else { loginSuccess(data); }
+});
+
+document.getElementById('btn-register').addEventListener('click', async () => {
+    const username = document.getElementById('auth-username').value;
+    const password = document.getElementById('auth-password').value;
+    const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (data.error) { authError.innerText = data.error; authError.style.display = 'block'; } 
+    else { loginSuccess(data); }
+});
+
+function loginSuccess(user) {
+    currentUser = user;
+    authScreen.classList.remove('active');
+    appScreen.classList.add('active');
+    socket.emit('user:join', user.id);
+}
+
+socket.on('user:chats', (chats) => {
+    chatsContainer.innerHTML = '';
+    chats.forEach(chat => {
+        const item = document.createElement('div');
+        item.className = `chat-item ${chat.id === activeChatId ? 'active' : ''}`;
+        item.innerHTML = `
+            <div class="avatar">${chat.name.substring(0, 2).toUpperCase()}</div>
+            <div style="flex:1;">
+                <h4>${chat.name}</h4>
+                <p style="font-size:12px; color:gray;">${chat.is_group ? 'Группа' : 'Чат 1-на-1'}</p>
+            </div>
+        `;
+        item.onclick = () => openChat(chat.id, chat.name);
+        chatsContainer.appendChild(item);
+    });
+});
+
+document.getElementById('btn-action-add').addEventListener('click', () => {
+    const query = document.getElementById('search-friend-id').value.trim();
+    if (!query) return alert('Введите 10-значный ID или имя группы');
+    if (query.length === 10 && /^\d+$/.test(query)) {
+        socket.emit('chat:create_private', { userId: currentUser.id, targetId: query });
+    } else {
+        socket.emit('chat:create_group', { userId: currentUser.id, groupName: query });
+    }
+    document.getElementById('search-friend-id').value = '';
+});
+
+socket.on('chat:new', () => socket.emit('user:join', currentUser.id));
+socket.on('chat:error', (err) => alert(err));
+
+function openChat(chatId, chatName) {
+    activeChatId = chatId;
+    chatStub.classList.remove('active');
+    chatActive.classList.add('active');
+    document.getElementById('active-chat-name').innerText = chatName;
+    document.getElementById('active-chat-avatar').innerText = chatName.substring(0, 2).toUpperCase();
+    socket.emit('chat:create_private', { userId: currentUser.id, targetId: chatId.includes('chat_') || chatId.includes('group_') ? '' : chatId });
+}
+
+socket.on('chat:opened', ({ chatId, messages }) => {
+    if (chatId !== activeChatId) return;
+    messagesContainer.innerHTML = '';
+    messages.forEach(msg => displayMessage(msg));
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+});
+
+function displayMessage(msg) {
+    const isMy = msg.sender_id === currentUser.id;
+    const row = document.createElement('div');
+    row.className = `msg-row ${isMy ? 'my' : 'other'}`;
+    row.id = `msg-${msg.id}`;
+    let content = ``;
+    if (!isMy) content += `<div class="msg-author">${msg.sender_name}</div>`;
+    if (msg.file_url) {
+        if (msg.file_type && msg.file_type.startsWith('image/')) {
+            content += `<img src="${msg.file_url}" style="max-width:100%; border-radius:8px;"><br>`;
+        } else {
+            content += `<a href="${msg.file_url}" target="_blank"><i class="fa-file"></i> ${msg.file_name}</a><br>`;
+        }
+    }
+    if (msg.text) content += `<span>${msg.text}</span>`;
+    content += `<span class="msg-time">${msg.timestamp}</span>`;
+    row.innerHTML = `<div class="msg-bubble">${content}</div>`;
+    
+    if (isMy) {
+        row.ondblclick = () => {
+            if (confirm('Удалить сообщение?')) socket.emit('message:delete', { msgId: msg.id, chatId: activeChatId });
+        };
+    }
+    messagesContainer.appendChild(row);
+}
+
+document.getElementById('btn-send-message').addEventListener('click', sendMessage);
+document.getElementById('message-text-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+
+function sendMessage() {
+    const input = document.getElementById('message-text-input');
+    const text = input.value.trim();
+    if (!text || !activeChatId) return;
+    socket.emit('message:send', { chatId: activeChatId, senderId: currentUser.id, senderName: currentUser.username, text });
+    input.value = '';
+}
+
+document.getElementById('file-input').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file || !activeChatId) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.fileUrl) {
+        socket.emit('message:send', { chatId: activeChatId, senderId: currentUser.id, senderName: currentUser.username, fileUrl: data.fileUrl, fileName: data.fileName, fileType: data.fileType });
+    }
+});
+
+socket.on('message:new', (msg) => {
+    if (msg.chatId === activeChatId) { displayMessage(msg); messagesContainer.scrollTop = messagesContainer.scrollHeight; }
+});
+socket.on('message:deleted', ({ msgId }) => { const el = document.getElementById(`msg-${msgId}`); if (el) el.remove(); });
+
+document.getElementById('btn-menu').addEventListener('click', () => {
+    document.getElementById('prof-id').innerText = currentUser.id;
+    document.getElementById('prof-date').innerText = currentUser.created_at;
+    modalSettings.classList.add('active');
+});
+document.getElementById('btn-close-settings').addEventListener('click', () => modalSettings.classList.remove('active'));
+
+document.getElementById('btn-save-profile').addEventListener('click', () => {
+    const newUsername = document.getElementById('settings-username').value.trim();
+    const newPassword = document.getElementById('settings-password').value.trim();
+    socket.emit('profile:update', { userId: currentUser.id, newUsername: newUsername || null, newPassword: newPassword || null });
+});
+
+socket.on('profile:updated', (res) => {
+    if (res.success) { currentUser.username = res.user.username; alert('Успешно изменено!'); modalSettings.classList.remove('active'); } 
+    else { alert(res.error); }
+});
+
+document.getElementById('btn-delete-account').addEventListener('click', () => {
+    if (confirm('Удалить аккаунт?')) socket.emit('profile:delete', currentUser.id);
+});
+socket.on('profile:deleted', () => { alert('Удалено.'); window.location.reload(); });
