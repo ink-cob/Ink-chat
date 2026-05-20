@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Чат NK</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+        html, body { height: 100%; width: 100%; overflow: hidden; position: fixed; background: #f4f6f9; }
+        .auth-container { display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; padding: 20px; }
+        .auth-card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 100%; max-width: 400px; }
+        .auth-card h2 { text-align: center; margin-bottom: 20px; }
+        #app-container { display: none; width: 100%; height: 100%; grid-template-columns: 340px 1fr; background: white; }
+        .sidebar { background: #1e293b; color: white; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+        .sidebar-scroll { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 12px; -webkit-overflow-scrolling: touch; }
+        .sidebar h3 { font-size: 13px; text-transform: uppercase; color: #94a3b8; border-bottom: 1px solid #334155; padding-bottom: 4px; }
+        .profile-box, .search-box, .chats-box, .settings-box, .blocked-box { background: #334155; padding: 12px; border-radius: 10px; font-size: 14px; }
+        .chat-item { background: #475569; padding: 10px; border-radius: 8px; margin-top: 5px; cursor: pointer; display: flex; justify-content: space-between; }
+        .chat-item:hover { background: #007aff; }
+        .chat-area { display: flex; flex-direction: column; height: 100%; background: #f8fafc; overflow: hidden; }
+        .chat-header { background: white; padding: 15px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; }
+        .btn-back { display: none; background: #e2e8f0; color: #334155; width: auto; padding: 6px 12px; margin: 0; font-size: 14px; }
+        .messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+        .msg { background: #e2e8f0; padding: 10px 14px; border-radius: 12px; max-width: 75%; width: fit-content; position: relative; word-break: break-word; }
+        .msg.own { background: #007aff; color: white; align-self: flex-end; }
+        .msg .meta { font-size: 10px; opacity: 0.7; margin-bottom: 3px; display: flex; justify-content: space-between; gap: 10px; }
+        .msg .actions { margin-top: 5px; display: flex; gap: 8px; font-size: 10px; cursor: pointer; justify-content: flex-end; }
+        .chat-footer { padding: 15px; background: white; border-top: 1px solid #e2e8f0; display: flex; gap: 10px; align-items: center; padding-bottom: calc(15px + env(safe-area-inset-bottom)); }
+        .chat-footer input[type="text"] { margin-top: 0; flex: 1; }
+        .chat-footer input[type="file"] { display: none; }
+        .file-label { background: #f1f5f9; padding: 10px; border-radius: 8px; cursor: pointer; border: 1px solid #cbd5e1; font-size: 16px; }
+        input, button, select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 16px; outline: none; }
+        button { background: #007aff; color: white; border: none; font-weight: 600; cursor: pointer; }
+        button.danger { background: #ff3b30; }
+        button.secondary { background: #cbd5e1; color: #334155; }
+        .blocked-user-item { display: flex; justify-content: space-between; background: #475569; padding: 6px; margin-top: 5px; border-radius: 6px; align-items: center; }
+        .blocked-user-item button { margin: 0; padding: 4px 8px; font-size: 11px; width: auto; }
+        @media (max-width: 768px) {
+            #app-container { grid-template-columns: 1fr; }
+            .auth-card { max-width: 100%; height: 100%; border-radius: 0; justify-content: center; }
+            .sidebar { display: flex; } .chat-area { display: none; }
+            body.in-chat .sidebar { display: none; } body.in-chat .chat-area { display: flex; }
+            body.in-chat .btn-back { display: block; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="auth-screen" class="auth-container">
+        <div class="auth-card">
+            <h2>Чат INK</h2>
+            <input type="text" id="reg-name" placeholder="Никнейм">
+            <input type="password" id="reg-pass" placeholder="Пароль">
+            <button id="btn-reg">Регистрация</button>
+            <hr style="margin:15px 0; opacity:0.2;">
+            <input type="text" id="login-id" placeholder="Ваш 10-значный ID">
+            <input type="password" id="login-pass" placeholder="Пароль">
+            <button id="btn-login" style="background:#34c759;">Войти</button>
+        </div>
+    </div>
+
+    <div id="app-container">
+        <div class="sidebar">
+            <div class="sidebar-scroll">
+                <div class="profile-box">
+                    <p>Вы: <strong id="my-name"></strong></p>
+                    <p>ID: <span id="my-id" style="color:#ffcc00; font-weight:bold;"></span></p>
+                    <button class="danger" id="btn-logout" style="padding:4px; margin-top:8px; font-size:12px;">Выйти</button>
+                </div>
+                <div class="search-box">
+                    <h3>Поиск и Создание</h3>
+                    <input type="text" id="search-input" placeholder="ID пользователя...">
+                    <button id="btn-search">Найти человека</button>
+                    <div id="search-result" style="margin-top:5px;"></div>
+                    <hr style="opacity:0.1; margin:10px 0;">
+                    <input type="text" id="group-name-input" placeholder="Название группы">
+                    <input type="text" id="group-ids-input" placeholder="ID через запятую">
+                    <button id="btn-create-group" style="background:#34c759;">Создать группу</button>
+                </div>
+                <div class="chats-box">
+                    <h3>Ваши Диалоги</h3>
+                    <div id="active-chats-list"><p style="opacity:0.5;text-align:center;">Список пуст</p></div>
+                </div>
+                <div class="settings-box">
+                    <h3>Настройки</h3>
+                    <input type="text" id="edit-name" placeholder="Новый никнейм">
+                    <input type="password" id="edit-pass" placeholder="Новый пароль">
+                    <button id="btn-update">Сохранить</button>
+                    <button class="danger" id="btn-delete-acc" style="font-size:11px; padding:4px; margin-top:5px;">Удалить аккаунт</button>
+                </div>
+                <div class="blocked-box">
+                    <h3>Черный список</h3>
+                    <div id="blocked-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chat-area">
+            <div class="chat-header">
+                <button class="btn-back" id="btn-chat-back">← Меню</button>
+                <span id="current-chat-title">Выберите чат из меню</span>
+                <button id="btn-block-current" class="danger" style="width:auto;display:none;padding:4px 8px;font-size:12px;margin:0;">Блок</button>
+            </div>
+            <div class="messages" id="messages-container"></div>
+            <div class="chat-footer" id="chat-footer-block" style="display:none;">
+                <label class="file-label" for="file-input">📎</label>
+                <input type="file" id="file-input">
+                <input type="text" id="msg-text-input" placeholder="Сообщение...">
+                <button id="btn-send" style="width:auto; margin:0; padding:12px 16px;">➜</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io(https://inkeeeeerchat.byethost8.com);
+        let myId='', myName='', currentRoomId='', activeChatPartnerId='', selectedFile=null;
+        const authScreen=document.getElementById('auth-screen'), appContainer=document.getElementById('app-container');
+        const messagesContainer=document.getElementById('messages-container'), chatFooter=document.getElementById('chat-footer-block');
+        const currentChatTitle=document.getElementById('current-chat-title'), btnBlockCurrent=document.getElementById('btn-block-current');
+        const blockedListDiv=document.getElementById('blocked-list'), activeChatsList=document.getElementById('active-chats-list');
+
+        socket.on('errorMsg', (msg) => alert(msg));
+
+        document.getElementById('btn-reg').addEventListener('click', () => {
+            const username = document.getElementById('reg-name').value.trim();
+            const password = document.getElementById('reg-pass').value.trim();
+            if(username && password) socket.emit('register', { username, password });
+        });
+        document.getElementById('btn-login').addEventListener('click', () => {
+            const id = document.getElementById('login-id').value.trim();
+            const password = document.getElementById('login-pass').value.trim();
+            if(id && password) socket.emit('login', { id, password });
+        });
+        function loginOk(data) {
+            myId=data.id; myName=data.username; authScreen.style.display='none'; appContainer.style.display='grid';
+            document.getElementById('my-name').innerText=myName; document.getElementById('my-id').innerText=myId;
+            socket.emit('getBlockedUsers', myId);
+        }
+        socket.on('registerSuccess', (data) => { alert(`Ваш ID: ${data.id}`); loginOk(data); });
+        socket.on('loginSuccess', loginOk);
+        document.getElementById('btn-logout').addEventListener('click', () => location.reload());
+
+        document.getElementById('btn-delete-acc').addEventListener('click', () => { if(confirm('Удалить профиль?')) socket.emit('deleteAccount', myId); });
+        socket.on('accountDeleted', () => location.reload());
+        document.getElementById('btn-update').addEventListener('click', () => {
+            const nu = document.getElementById('edit-name').value.trim();
+            const np = document.getElementById('edit-pass').value.trim();
+            socket.emit('updateProfile', { id: myId, newUsername: nu, newPassword: np });
+        });
+        socket.on('profileUpdated', (data) => { myName=data.username; document.getElementById('my-name').innerText=myName; alert('Сохранено!'); });
+
+        document.getElementById('btn-search').addEventListener('click', () => {
+            const sid = document.getElementById('search-input').value.trim();
+            if(sid === myId) return alert('Это ваш ID!');
+            if(sid) socket.emit('searchUser', sid);
+        });
+        socket.on('searchResult', (user) => {
+            const res = document.getElementById('search-result');
+            if(user) res.innerHTML = `<div style="color:white;margin-top:5px;">${user.username} <button class="secondary" style="padding:4px 8px;width:auto;" onclick="openChat('${user.id}', false)">Начать чат</button></div>`;
+            else res.innerHTML = '<span style="color:#ff3b30;">Не найден</span>';
+        });
+
+        document.getElementById('btn-create-group').addEventListener('click', () => {
+            const name = document.getElementById('group-name-input').value.trim();
+            const idsRaw = document.getElementById('group-ids-input').value.trim();
+            if(!name || !idsRaw) return alert('Заполните поля!');
+            const targetIds = idsRaw.split(',').map(id => id.trim());
+            socket.emit('joinRoom', { currentUserId: myId, targetIds, roomName: name, isGroup: true });
+            document.getElementById('group-name-input').value=''; document.getElementById('group-ids-input').value='';
+        });
+
+        window.openChat = function(idOrRoom, isGroup, sName = '') {
+            activeChatPartnerId = isGroup ? '' : idOrRoom; 
+            btnBlockCurrent.style.display = isGroup ? 'none' : 'block';
+            chatFooter.style.display = 'flex'; 
+            document.body.classList.add('in-chat');
+            
+            if (isGroup) {
+                socket.emit('joinRoom', { currentUserId: myId, targetIds: [], roomName: idOrRoom, isGroup: true });
+            } else {
+                socket.emit('joinRoom', { currentUserId: myId, targetIds: [idOrRoom], roomName: sName, isGroup: false });
+            }
+        };
+        document.getElementById('btn-chat-back').addEventListener('click', () => document.body.classList.remove('in-chat'));
+
+        socket.on('updateChatsList', (chats) => {
+            activeChatsList.innerHTML = '';
+            if(chats.length === 0) { activeChatsList.innerHTML = '<p style="opacity:0.5;text-align:center;">Список пуст</p>'; return; }
+            chats.forEach(c => {
+                const div = document.createElement('div'); div.className = 'chat-item'; div.innerHTML = `<span>${c.isGroup ? '👥' : '👤'} ${c.name}</span>`;
+                div.onclick = () => openChat(c.id, c.isGroup, c.name); activeChatsList.appendChild(div);
+            });
+        });
+        socket.on('roomJoined', (data) => { currentRoomId = data.roomId; currentChatTitle.innerText = data.roomName; messagesContainer.innerHTML = ''; data.messages.forEach(addMsg); });
+
+        document.getElementById('file-input').addEventListener('change', (e) => {
+            const file = e.target.files;
+            if(file) {
+                const r = new FileReader(); r.onload = (evt) => { selectedFile = { name: file.name, type: file.type, data: evt.target.result }; alert('Файл готов!'); };
+                r.readAsDataURL(file);
+            }
+        });
+        document.getElementById('btn-send').addEventListener('click', () => {
+            const text = document.getElementById('msg-text-input').value.trim(); if(!text && !selectedFile) return;
+            socket.emit('sendMessage', { roomId: currentRoomId, senderId: myId, text, file: selectedFile });
+            document.getElementById('msg-text-input').value = ''; selectedFile = null;
+        });
+        socket.on('newMessage', (data) => { if(data.roomId === currentRoomId) addMsg(data.message); });
+
+        function addMsg(msg) {
+            const isOwn = msg.senderId === myId; const div = document.createElement('div'); div.className = `msg ${isOwn ? 'own' : ''}`; div.setAttribute('data-msg-id', msg.id);
+            let body = `<div class="meta"><span>${msg.senderName}</span> <span>${msg.time} [${msg.status}]</span></div>`;
+            if(msg.text) body += `<p class="txt-content">${msg.text}</p>`;
+            if(msg.file) {
+                if(msg.file.type.startsWith('image/')) body += `<img src="${msg.file.data}" style="max-width:100%; border-radius:8px; margin-top:5px; display:block;">`;
+                else body += `<p style="margin-top:5px;"><a href="${msg.file.data}" download="${msg.file.name}" style="color:${isOwn?'#fff':'#007aff'}">📎 ${msg.file.name}</a></p>`;
+            }
+            if(isOwn) body += `<div class="actions"><span onclick="trigEdit('${msg.id}')">Ред.</span> <span onclick="trigDel('${msg.id}')">Уд.</span></div>`;
+            div.innerHTML = body; messagesContainer.appendChild(div); messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        window.trigDel = function(mid) { if(confirm('Удалить?')) socket.emit('deleteMessage', { roomId: currentRoomId, msgId: mid }); };
+        window.trigEdit = function(mid) { const nt = prompt('Новый текст:'); if(nt) socket.emit('editMessage', { roomId: currentRoomId, msgId: mid, newText: nt }); };
+        socket.on('messageDeleted', (id) => { const el = document.querySelector(`[data-msg-id="${id}"]`); if(el) el.remove(); });
+        socket.on('messageEdited', (d) => { const id = d.msgId || d.id; const el = document.querySelector(`[data-msg-id="${id}"] .txt-content`); if(el) el.innerText = d.newText; });
+
+        btnBlockCurrent.addEventListener('click', () => { if(activeChatPartnerId && confirm('Блок?')) socket.emit('blockUser', { currentUserId: myId, targetId: activeChatPartnerId }); });
+        window.unblock = function(id) { socket.emit('unblockUser', { currentUserId: myId, targetId: id }); };
+        socket.on('blockedUsersList', (list) => {
+            blockedListDiv.innerHTML = '';
+            list.forEach(u => {
+                const d = document.createElement('div'); d.className = 'blocked-user-item'; d.innerHTML = `<span>${u.username}</span><button class="danger" onclick="unblock('${u.id}')">Х</button>`; blockedListDiv.appendChild(d);
+            });
+        });
+    </script>
+</body>
+</html>
+
